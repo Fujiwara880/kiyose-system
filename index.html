@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>清瀬振興開発システム (Socket.io リアルタイム通信版)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Socket.io クライアントライブラリ -->
+  <script src="/socket.io/socket.io.js"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            kiyose: {
+              light: '#e0f2fe',
+              DEFAULT: '#0284c7',
+              dark: '#0369a1',
+              accent: '#10b981'
+            }
+          },
+          fontFamily: { sans: ['Inter', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .loader { border: 3px solid #f3f3f3; border-top: 3px solid #0284c7; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .tab-content { display: none; }
+    .tab-content.active { display: flex; }
+  </style>
+</head>
+<body class="text-slate-800 h-screen flex overflow-hidden">
+
+  <!-- ブロック通知用オーバーレイ -->
+  <div id="blocked-overlay" class="fixed inset-0 bg-red-950/95 z-[100] hidden flex flex-col items-center justify-center p-6 text-white text-center backdrop-blur-md">
+    <div class="w-20 h-20 bg-red-600/30 text-red-500 border border-red-500/50 rounded-full flex items-center justify-center text-4xl mb-4 animate-bounce">
+      <i class="fa-solid fa-user-slash"></i>
+    </div>
+    <h2 class="text-3xl font-bold mb-2">アクセスがブロックされました</h2>
+    <p class="text-slate-300 max-w-md text-sm">管理者によってアクセスが切断されました。この端末からはシステムを利用できません。</p>
+  </div>
+
+  <!-- ログイン画面モーダル -->
+  <div id="login-overlay" class="fixed inset-0 bg-slate-900/90 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-100">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 bg-kiyose text-white rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-sky-500/30">
+          <i class="fa-solid fa-leaf"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-slate-800">清瀬振興開発システム</h2>
+        <p class="text-sm text-slate-500 mt-2">ユーザー名とパスワードを入力してログイン</p>
+      </div>
+      
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">表示名（お名前）</label>
+          <input type="text" id="login-username" required placeholder="例: 清瀬 太郎" class="w-full rounded-lg border-slate-300 border shadow-sm px-4 py-2.5 text-sm focus:border-kiyose focus:ring-2 focus:ring-kiyose/20 outline-none transition-all">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">パスワード</label>
+          <input type="password" id="login-password" required placeholder="パスワードを入力" class="w-full rounded-lg border-slate-300 border shadow-sm px-4 py-2.5 text-sm focus:border-kiyose focus:ring-2 focus:ring-kiyose/20 outline-none transition-all">
+          <p class="text-[11px] text-slate-400 mt-1">※ 管理者: <code class="bg-slate-100 px-1 py-0.5 rounded">E8NGF27R</code> / ゲスト: <code class="bg-slate-100 px-1 py-0.5 rounded">F-52E</code></p>
+        </div>
+        <button type="submit" id="login-btn" class="w-full bg-kiyose hover:bg-kiyose-dark text-white font-bold py-3 px-4 rounded-lg transition-all shadow-md shadow-sky-600/20 flex justify-center items-center gap-2 mt-2">
+          <span>システムに接続する</span>
+          <div id="login-loader" class="loader hidden !w-4 !h-4 !border-2 !border-white/30 !border-t-white"></div>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 確認用モーダル -->
+  <div id="custom-modal" class="fixed inset-0 bg-slate-900/60 z-[70] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm border border-slate-100 text-center">
+      <div class="w-12 h-12 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-xl mx-auto mb-3">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <h3 id="modal-title" class="text-lg font-bold text-slate-800 mb-2">確認</h3>
+      <p id="modal-message" class="text-sm text-slate-600 mb-6">本当に実行しますか？</p>
+      <div class="flex gap-3 justify-end">
+        <button id="modal-cancel-btn" class="flex-1 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition-colors">キャンセル</button>
+        <button id="modal-confirm-btn" class="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors shadow-sm">実行する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast-container" class="fixed top-4 right-4 z-[80] flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- サイドバー -->
+  <aside id="sidebar" class="bg-slate-900 text-slate-300 w-64 flex-shrink-0 flex flex-col transition-transform duration-300 absolute inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 z-40 border-r border-slate-800">
+    <div class="h-16 flex items-center px-6 bg-slate-950 font-bold text-white text-lg tracking-wide border-b border-slate-800">
+      <i class="fa-solid fa-leaf text-kiyose-accent mr-3 text-xl"></i> 清瀬振興開発
+    </div>
+    <div class="p-4 flex-1 overflow-y-auto custom-scrollbar">
+      <nav class="space-y-1.5" id="nav-menu">
+        <a href="#" data-target="tab-overview" class="nav-item active flex items-center px-4 py-3 bg-kiyose text-white rounded-xl font-medium transition-all shadow-sm">
+          <i class="fa-solid fa-chart-pie w-6 text-center mr-2"></i> 概要・データ
+        </a>
+        <a href="#" data-target="tab-board" class="nav-item flex items-center px-4 py-3 hover:bg-slate-800 hover:text-white rounded-xl font-medium transition-colors">
+          <i class="fa-solid fa-clipboard-list w-6 text-center mr-2"></i> チーム掲示板
+        </a>
+        <a href="#" data-target="tab-chat" class="nav-item flex items-center px-4 py-3 hover:bg-slate-800 hover:text-white rounded-xl font-medium transition-colors">
+          <i class="fa-solid fa-comments w-6 text-center mr-2"></i> チームチャット
+        </a>
+        <a href="#" data-target="tab-call" class="nav-item flex items-center px-4 py-3 hover:bg-slate-800 hover:text-white rounded-xl font-medium transition-colors">
+          <i class="fa-solid fa-phone-volume w-6 text-center mr-2"></i> 無料オンライン通話
+        </a>
+        <a href="#" data-target="tab-ai" class="nav-item flex items-center px-4 py-3 hover:bg-slate-800 hover:text-white rounded-xl font-medium transition-colors">
+          <i class="fa-solid fa-robot w-6 text-center mr-2 text-purple-400"></i> 清瀬復興 AIアシスタント
+        </a>
+        <a href="#" data-target="tab-map" class="nav-item flex items-center px-4 py-3 hover:bg-slate-800 hover:text-white rounded-xl font-medium transition-colors">
+          <i class="fa-solid fa-map-location-dot w-6 text-center mr-2"></i> 地域マップ
+        </a>
+        <a href="#" id="nav-admin" data-target="tab-admin" class="nav-item hidden items-center px-4 py-3 hover:bg-slate-800 hover:text-white rounded-xl font-medium transition-colors text-red-400 hover:text-red-300">
+          <i class="fa-solid fa-shield-halved w-6 text-center mr-2"></i> 開発者（管理）
+        </a>
+      </nav>
+    </div>
+    <div class="p-4 bg-slate-950 border-t border-slate-800/80 text-sm">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-full bg-kiyose-dark flex items-center justify-center text-white font-bold text-sm shadow-inner">
+          <i class="fa-solid fa-user"></i>
+        </div>
+        <div class="overflow-hidden">
+          <p class="text-white font-semibold truncate" id="user-display">未接続</p>
+          <p class="text-slate-500 text-xs truncate" id="user-id-display">接続待機中...</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
+    <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/50 z-30 hidden md:hidden"></div>
+    <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 z-20 flex-shrink-0">
+      <div class="flex items-center gap-4">
+        <button id="mobile-menu-btn" class="md:hidden text-slate-500 hover:text-slate-700 p-1"><i class="fa-solid fa-bars text-xl"></i></button>
+        <h1 class="text-lg font-bold text-slate-800 hidden sm:block">清瀬振興開発システム</h1>
+      </div>
+      <div class="flex items-center gap-4">
+        <span id="current-tab-label" class="text-sm font-semibold text-slate-600">概要・データ</span>
+        <span id="connection-status" class="bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5 shadow-sm">
+          <span id="connection-indicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="connection-state-text">Socket.io リアルタイム同期中</span>
+        </span>
+      </div>
+    </header>
+
+    <div class="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 relative custom-scrollbar">
+      
+      <!-- タブ: 概要・データ -->
+      <div id="tab-overview" class="tab-content active flex-col h-full max-w-4xl mx-auto w-full">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 flex flex-col h-[520px]">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-chart-line text-kiyose"></i> 清瀬市 統計アナリティクス
+              </h2>
+              <p class="text-xs text-slate-500 mt-0.5">人口動態推移と事業復興予算の配分データ</p>
+            </div>
+            <select id="chartSelector" class="text-sm border-slate-300 rounded-lg px-3 py-1.5 focus:border-kiyose outline-none bg-slate-50 text-slate-700 font-medium">
+              <option value="population">人口推移予測（2020-2026）</option>
+              <option value="budget">振興予算領域配分</option>
+            </select>
+          </div>
+          <div class="flex-1 relative w-full h-full">
+            <canvas id="populationChart" class="absolute inset-0"></canvas>
+            <canvas id="budgetChart" class="absolute inset-0 hidden"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- タブ: チーム掲示板 -->
+      <div id="tab-board" class="tab-content flex-col h-full max-w-4xl mx-auto w-full">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 flex flex-col h-full">
+          <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+            <div>
+              <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-clipboard-list text-kiyose-accent"></i> チーム共有掲示板
+              </h2>
+              <p class="text-xs text-slate-500">Node.js / Socket.io による全端末リアルタイム自動同期</p>
+            </div>
+            <button onclick="confirmClearBoard()" class="text-xs text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors font-medium flex items-center gap-1">
+              <i class="fa-solid fa-trash-can"></i> 掲示板データ消去
+            </button>
+          </div>
+          <form id="board-form" class="flex gap-2 mb-4">
+            <input type="text" id="board-input" placeholder="アイデアや共有事項を入力..." required class="flex-1 rounded-lg border-slate-300 border px-4 py-2 text-sm focus:border-kiyose outline-none">
+            <button type="submit" id="add-board-btn" class="bg-kiyose-accent hover:bg-emerald-600 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm flex items-center gap-1">
+              <i class="fa-solid fa-plus"></i> 投稿
+            </button>
+          </form>
+          <div class="flex-1 overflow-y-auto custom-scrollbar pr-1">
+            <div id="board-list" class="grid gap-3 grid-cols-1 md:grid-cols-2">
+              <div class="col-span-2 text-center text-slate-400 py-12">投稿を取得中...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- タブ: チームチャット -->
+      <div id="tab-chat" class="tab-content flex-col h-full max-w-3xl mx-auto w-full">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 flex flex-col h-full overflow-hidden">
+          <div class="bg-slate-50 border-b border-slate-200/80 px-5 py-3 flex justify-between items-center">
+            <div>
+              <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-comments text-sky-500"></i> リアルタイム チームチャット
+              </h2>
+              <p class="text-xs text-slate-500">全端末で会話内容が即座に同期されます</p>
+            </div>
+            <button onclick="confirmClearChat()" class="text-xs text-red-500 hover:text-red-700 bg-white border border-slate-200 hover:bg-red-50 px-3 py-1 rounded-lg transition-colors font-medium">
+              <i class="fa-solid fa-trash-can mr-1"></i>履歴削除
+            </button>
+          </div>
+          <div id="team-chat-messages" class="flex-1 overflow-y-auto custom-scrollbar p-4 bg-slate-100/70 flex flex-col gap-3">
+            <div class="text-center text-slate-400 py-10 text-xs">チャット履歴を取得中...</div>
+          </div>
+          <form id="team-chat-form" class="p-3 bg-white border-t border-slate-200/80 flex gap-2">
+            <input type="text" id="team-chat-input" placeholder="メッセージを入力..." required class="flex-1 rounded-lg border-slate-300 border px-4 py-2 text-sm focus:border-sky-500 outline-none">
+            <button type="submit" id="team-chat-btn" class="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1 shadow-sm">
+              <i class="fa-solid fa-paper-plane"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- タブ: 無料オンライン通話 -->
+      <div id="tab-call" class="tab-content flex-col h-full max-w-4xl mx-auto w-full">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-8 flex flex-col items-center justify-center h-full text-center">
+          <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-3xl mb-4 shadow-sm">
+            <i class="fa-solid fa-phone-volume"></i>
+          </div>
+          <h2 class="text-2xl font-bold text-slate-800 mb-2">無料オンライン通話・ミーティング</h2>
+          <p class="text-slate-600 text-sm mb-6 max-w-md">アカウント登録不要でワンクリックで部屋を作成・共有し、別端末同士で通話できます。</p>
+          
+          <div class="w-full max-w-md mb-6 bg-slate-50 border border-slate-200/80 p-5 rounded-2xl text-left shadow-sm">
+            <p class="text-xs text-slate-500 mb-2 font-bold uppercase tracking-wider">
+              <i class="fa-solid fa-plus-circle mr-1 text-emerald-600"></i> 新規通話ルーム発行
+            </p>
+            <button onclick="createNewCallRoom()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition-all text-sm shadow flex items-center justify-center gap-2">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> ワンクリックで新しい部屋を発行
+            </button>
+          </div>
+
+          <div class="bg-slate-50 p-6 rounded-2xl border border-slate-200/80 w-full max-w-md text-left shadow-sm">
+            <label class="block text-sm font-semibold text-slate-700 mb-2">通話部屋コード（ルームID）</label>
+            <div class="flex gap-2 mb-4">
+              <input type="text" id="call-room-code" placeholder="例: kiyose-call-123" class="flex-1 rounded-xl border-slate-300 border px-4 py-2.5 text-sm focus:border-emerald-500 outline-none">
+              <button onclick="copyRoomCode()" title="コードをコピー" class="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl transition-colors font-medium">
+                <i class="fa-solid fa-copy"></i>
+              </button>
+            </div>
+            <button onclick="joinCallRoom()" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow flex justify-center items-center gap-2 text-sm">
+              <i class="fa-solid fa-headset"></i> 通話ルームに参加する（Jitsi Meet）
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- タブ: AI Assistant -->
+      <div id="tab-ai" class="tab-content flex-col h-full max-w-4xl mx-auto w-full">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 flex flex-col h-full overflow-hidden">
+          <div class="bg-slate-50 border-b border-slate-200/80 p-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                <i class="fa-solid fa-robot"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                  清瀬地域振興 AI アドバイザー
+                  <span class="text-[10px] bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full border border-purple-200 font-bold">Gemini Powered</span>
+                </h2>
+                <p class="text-xs text-slate-500">清瀬市の農業・自然観光・コミュニティ活性化施策について相談</p>
+              </div>
+            </div>
+            <button onclick="clearAIChat()" class="text-xs text-slate-500 hover:text-red-500 px-3 py-1.5 border border-slate-200 rounded-lg bg-white transition-colors">
+              <i class="fa-solid fa-trash-can mr-1"></i>クリア
+            </button>
+          </div>
+          <div id="ai-chat-history" class="flex-1 overflow-y-auto custom-scrollbar p-4 bg-slate-50 flex flex-col gap-4"></div>
+          <form id="ai-chat-form" class="p-3 bg-white border-t border-slate-200/80 flex gap-2 relative">
+            <textarea id="ai-chat-input" rows="2" placeholder="清瀬市の特産品を活用したアイデアなどについて質問してください..." class="flex-1 rounded-xl border-slate-300 border px-3 py-2 text-sm resize-none custom-scrollbar outline-none focus:border-purple-500" required></textarea>
+            <button type="submit" id="ai-chat-submit-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center justify-center gap-2 min-w-[5.5rem]">
+              <span id="ai-chat-btn-text"><i class="fa-solid fa-paper-plane"></i> 送信</span>
+              <div id="ai-chat-loader" class="loader hidden !w-4 !h-4 !border-2 !border-purple-200 !border-t-white"></div>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- タブ: 地域マップ -->
+      <div id="tab-map" class="tab-content flex-col h-full max-w-5xl mx-auto w-full">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 flex flex-col h-full">
+          <h2 class="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-map-location-dot text-kiyose"></i> 東京都清瀬市 広域マップ
+          </h2>
+          <div class="flex-1 rounded-xl overflow-hidden border border-slate-200 relative">
+            <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d25895.83070444319!2d139.5028!3d35.7725!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x6018e6e58b11eb0b%3A0xc6c4f0bb44b20a4!2sKiyose%2C%20Tokyo!5e0!3m2!1sen!2sjp!4v1700000000000!5m2!1sen!2sjp" width="100%" height="100%" style="border:0;" allowfullscreen="" loading="lazy" class="absolute inset-0"></iframe>
+          </div>
+        </div>
+      </div>
+
+      <!-- タブ: Admin (開発者画面) -->
+      <div id="tab-admin" class="tab-content flex-col h-full max-w-5xl mx-auto w-full">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 flex flex-col h-full overflow-hidden">
+          <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 flex-shrink-0">
+            <div class="flex items-center">
+              <div class="w-10 h-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mr-3 font-bold">
+                <i class="fa-solid fa-shield-halved text-lg"></i>
+              </div>
+              <div>
+                <h2 class="text-lg font-bold text-slate-800">開発者コントロールパネル</h2>
+                <p class="text-xs text-slate-500">Socket.io毎秒追跡による全端末環境・閲覧中画面のリアルタイム監視と即時ブロック</p>
+              </div>
+            </div>
+            <button onclick="confirmResetAll()" class="bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-dumpster"></i> 全システムデータ初期化
+            </button>
+          </div>
+          <div class="flex-1 bg-slate-50 border border-slate-200/80 rounded-xl overflow-y-auto custom-scrollbar">
+            <table class="w-full text-sm text-left">
+              <thead class="text-xs text-slate-500 uppercase bg-slate-100 border-b border-slate-200 sticky top-0 z-10">
+                <tr>
+                  <th class="px-4 py-3">ユーザー / ログイン情報</th>
+                  <th class="px-4 py-3">端末・環境情報</th>
+                  <th class="px-4 py-3">閲覧中の画面</th>
+                  <th class="px-4 py-3">接続状態</th>
+                  <th class="px-4 py-3 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="admin-presence-list">
+                <tr><td colspan="5" class="px-6 py-6 text-center text-slate-400">接続データを取得中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    // 1. Socket.io 接続設定
+    const socket = io(); // 同一サーバー（Render上）へ全自動接続
+
+    window.currentUserInfo = null;
+    window.currentTabId = "tab-overview";
+
+    const TAB_LABELS = {
+      'tab-overview': '概要・データ',
+      'tab-board': 'チーム掲示板',
+      'tab-chat': 'チームチャット',
+      'tab-call': '無料オンライン通話',
+      'tab-ai': '清瀬復興 AIアシスタント',
+      'tab-map': '地域マップ',
+      'tab-admin': '開発者（管理）'
+    };
+
+    function detectDeviceInfo() {
+      const ua = navigator.userAgent;
+      let os = "Unknown OS";
+      if (ua.indexOf("Win") !== -1) os = "Windows";
+      else if (ua.indexOf("Mac") !== -1) os = "macOS";
+      else if (ua.indexOf("Android") !== -1) os = "Android";
+      else if (ua.indexOf("iPhone") !== -1 || ua.indexOf("iPad") !== -1) os = "iOS";
+
+      let browser = "Browser";
+      if (ua.indexOf("Chrome") !== -1 && ua.indexOf("Edg") === -1) browser = "Chrome";
+      else if (ua.indexOf("Safari") !== -1 && ua.indexOf("Chrome") === -1) browser = "Safari";
+      else if (ua.indexOf("Edg") !== -1) browser = "Edge";
+      else if (ua.indexOf("Firefox") !== -1) browser = "Firefox";
+
+      return `${os} / ${browser} (${window.screen.width}x${window.screen.height})`;
+    }
+
+    // トースト通知機能
+    window.showToast = function(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const toast = document.createElement('div');
+      let bgColor = type === 'error' ? 'bg-red-600' : (type === 'success' ? 'bg-emerald-600' : 'bg-slate-800');
+      let icon = type === 'error' ? 'fa-triangle-exclamation' : (type === 'success' ? 'fa-check-circle' : 'fa-info-circle');
+      toast.className = `flex items-center gap-3 ${bgColor} text-white px-4 py-3 rounded-xl shadow-lg transform transition-all duration-300 translate-x-full opacity-0 pointer-events-auto max-w-sm text-sm`;
+      toast.innerHTML = `<i class="fa-solid ${icon}"></i><p class="font-medium flex-1">${message}</p><button class="text-white/70 hover:text-white" onclick="this.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button>`;
+      container.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.remove('translate-x-full', 'opacity-0'));
+      setTimeout(() => { toast.classList.add('translate-x-full', 'opacity-0'); setTimeout(() => toast.remove(), 300); }, 4000);
+    };
+
+    // モーダルダイアログ
+    window.showConfirmModal = function(title, message, onConfirm) {
+      const modal = document.getElementById('custom-modal');
+      document.getElementById('modal-title').textContent = title;
+      document.getElementById('modal-message').textContent = message;
+      modal.classList.remove('hidden');
+
+      const cancelBtn = document.getElementById('modal-cancel-btn');
+      const confirmBtn = document.getElementById('modal-confirm-btn');
+
+      const cleanup = () => {
+        modal.classList.add('hidden');
+        cancelBtn.onclick = null;
+        confirmBtn.onclick = null;
+      };
+
+      cancelBtn.onclick = cleanup;
+      confirmBtn.onclick = () => {
+        cleanup();
+        onConfirm();
+      };
+    };
+
+    // 2. ログイン処理
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const uname = document.getElementById('login-username').value.trim();
+      const pass = document.getElementById('login-password').value.trim();
+
+      let role = "guest";
+      if (pass === "E8NGF27R") {
+        role = "admin";
+        document.getElementById('nav-admin').classList.remove('hidden');
+        document.getElementById('nav-admin').classList.add('flex');
+      } else if (pass === "F-52E") {
+        role = "guest";
+      } else {
+        showToast("パスワードが正しくありません", "error");
+        return;
+      }
+
+      // クライアント固有UIDの取得・生成
+      let uid = localStorage.getItem('kiyose_uid');
+      if (!uid) {
+        uid = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+        localStorage.setItem('kiyose_uid', uid);
+      }
+
+      window.currentUserInfo = {
+        uid: uid,
+        name: uname,
+        role: role,
+        device: detectDeviceInfo(),
+        loginTime: Date.now()
+      };
+
+      document.getElementById('user-display').textContent = window.currentUserInfo.name;
+      document.getElementById('user-id-display').textContent = `ID: ${uid.substring(0, 10)}`;
+      document.getElementById('login-overlay').classList.add('hidden');
+
+      // ハートビート機能開始（毎秒送信）
+      sendHeartbeat();
+      setInterval(sendHeartbeat, 1000);
+
+      initCharts();
+      initAIChat();
+      showToast(`${window.currentUserInfo.name}さん、Socket.ioに接続しました`, 'success');
+    });
+
+    // 毎秒ハートビート送信
+    function sendHeartbeat() {
+      if (!window.currentUserInfo || !socket.connected) return;
+      socket.emit('presence-heartbeat', {
+        ...window.currentUserInfo,
+        tab: window.currentTabId,
+        tabName: TAB_LABELS[window.currentTabId] || window.currentTabId
+      });
+    }
+
+    // 3. Socket.io 受信イベント
+    socket.on('init-data', (data) => {
+      renderBoard(data.board);
+      renderChat(data.chat);
+    });
+
+    socket.on('board-update', (posts) => renderBoard(posts));
+    socket.on('chat-update', (msgs) => renderChat(msgs));
+    socket.on('presences-update', (list) => renderAdminPresence(list));
+
+    socket.on('blocked', () => {
+      document.getElementById('blocked-overlay').classList.remove('hidden');
+    });
+
+    // 掲示板処理
+    function renderBoard(posts) {
+      const list = document.getElementById('board-list');
+      if (!list) return;
+      list.innerHTML = '';
+      if (!posts || posts.length === 0) {
+        list.innerHTML = '<div class="col-span-2 text-center text-slate-400 py-12 text-sm">投稿がありません</div>';
+        return;
+      }
+
+      posts.forEach(item => {
+        const d = new Date(item.time || Date.now());
+        const timeStr = `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        const canDelete = (window.currentUserInfo && (item.uid === window.currentUserInfo.uid || window.currentUserInfo.role === 'admin'));
+        const delBtn = canDelete ? `<button onclick="deleteBoardPost('${item.id}')" class="text-red-400 hover:text-red-600 p-1 text-xs transition-colors" title="削除"><i class="fa-solid fa-trash-can"></i></button>` : '';
+
+        list.innerHTML += `
+        <div class="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm hover:shadow transition-shadow flex flex-col justify-between">
+          <p class="text-sm text-slate-800 font-medium whitespace-pre-wrap mb-3">${escapeHtml(item.text)}</p>
+          <div class="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
+            <span class="flex items-center gap-1.5"><i class="fa-solid fa-circle-user text-kiyose"></i>${escapeHtml(item.name)}</span>
+            <div class="flex items-center gap-2">
+              <span>${timeStr}</span>
+              ${delBtn}
+            </div>
+          </div>
+        </div>`;
+      });
+    }
+
+    document.getElementById('board-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('board-input');
+      const val = input.value.trim();
+      if (!val || !window.currentUserInfo) return;
+
+      socket.emit('add-board', {
+        text: val,
+        name: window.currentUserInfo.name,
+        uid: window.currentUserInfo.uid
+      });
+      input.value = '';
+    });
+
+    window.deleteBoardPost = function(id) {
+      socket.emit('delete-board', id);
+    };
+
+    window.confirmClearBoard = function() {
+      showConfirmModal("掲示板の消去", "全端末の掲示板投稿を完全に消去しますか？", () => {
+        socket.emit('clear-board');
+        showToast('掲示板を全消去しました', 'success');
+      });
+    };
+
+    // チャット処理
+    function renderChat(msgs) {
+      const box = document.getElementById('team-chat-messages');
+      if (!box) return;
+      box.innerHTML = '';
+
+      if (!msgs || msgs.length === 0) {
+        box.innerHTML = '<div class="text-center text-slate-400 py-10 text-xs">まだメッセージがありません</div>';
+        return;
+      }
+
+      msgs.forEach(msg => {
+        const isMe = window.currentUserInfo && (msg.uid === window.currentUserInfo.uid);
+        const d = new Date(msg.time || Date.now());
+        const timeStr = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+
+        box.innerHTML += `
+        <div class="flex flex-col gap-1 max-w-[85%] ${isMe ? 'self-end items-end' : 'self-start items-start'}">
+          <span class="text-[10px] text-slate-500 px-1 font-medium">${isMe ? 'あなた' : escapeHtml(msg.name)} (${timeStr})</span>
+          <div class="px-4 py-2.5 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-sky-600 text-white rounded-tr-none' : 'bg-white border border-slate-200/80 text-slate-800 rounded-tl-none'}">
+            ${escapeHtml(msg.text)}
+          </div>
+        </div>`;
+      });
+      box.scrollTop = box.scrollHeight;
+    }
+
+    document.getElementById('team-chat-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('team-chat-input');
+      const val = input.value.trim();
+      if (!val || !window.currentUserInfo) return;
+
+      socket.emit('add-chat', {
+        text: val,
+        name: window.currentUserInfo.name,
+        uid: window.currentUserInfo.uid
+      });
+      input.value = '';
+    });
+
+    window.confirmClearChat = function() {
+      showConfirmModal("チャット消去", "全端末のチャット履歴を消去しますか？", () => {
+        socket.emit('clear-chat');
+        showToast('チャット履歴を消去しました', 'success');
+      });
+    };
+
+    // 開発者コントロールパネル
+    function renderAdminPresence(list) {
+      const tbody = document.getElementById('admin-presence-list');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      if (!list || list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-6 text-center text-slate-400">接続端末はありません</td></tr>';
+        return;
+      }
+
+      const now = Date.now();
+      list.sort((a,b) => (b.lastActive || 0) - (a.lastActive || 0)).forEach(p => {
+        const isOnline = (now - (p.lastActive || 0)) < 3000;
+        const statusBadge = isOnline 
+          ? `<span class="bg-emerald-100 text-emerald-700 border border-emerald-300 px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> オンライン</span>`
+          : `<span class="bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full text-xs font-medium">オフライン</span>`;
+
+        const isMe = window.currentUserInfo && p.uid === window.currentUserInfo.uid;
+        const blockBtn = (!isMe && window.currentUserInfo && window.currentUserInfo.role === 'admin') 
+          ? `<button onclick="blockUser('${p.uid}')" class="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-ban mr-1"></i>即時ブロック</button>` 
+          : `<span class="text-xs text-slate-400">-</span>`;
+
+        tbody.innerHTML += `
+        <tr class="border-b border-slate-200/60 hover:bg-slate-100/50 transition-colors">
+          <td class="px-4 py-3">
+            <div class="font-bold text-slate-800">${escapeHtml(p.name || '不明')} ${isMe ? '<span class="text-xs text-sky-600 font-normal ml-1">(自分)</span>' : ''}</div>
+            <div class="text-[10px] text-slate-400">権限: ${p.role === 'admin' ? '管理者' : '一般'} / ID: ${p.uid.substring(0,8)}</div>
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-600 font-mono">
+            <i class="fa-solid fa-laptop text-slate-400 mr-1"></i>${escapeHtml(p.device || '不明')}
+          </td>
+          <td class="px-4 py-3">
+            <span class="bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-lg text-xs font-semibold">
+              <i class="fa-solid fa-location-dot mr-1 text-sky-500"></i>${escapeHtml(p.tabName || p.tab || '画面')}
+            </span>
+          </td>
+          <td class="px-4 py-3">${statusBadge}</td>
+          <td class="px-4 py-3 text-right">${blockBtn}</td>
+        </tr>`;
+      });
+    }
+
+    window.blockUser = function(uid) {
+      showConfirmModal("アクセス即時ブロック", "このユーザーを直ちにシステムから遮断・ブロックしますか？", () => {
+        socket.emit('block-user', uid);
+        showToast('対象ユーザーを即時ブロックしました', 'success');
+      });
+    };
+
+    window.confirmResetAll = function() {
+      showConfirmModal("システムデータ初期化", "掲示板・チャットを一括初期化しますか？", () => {
+        socket.emit('reset-all');
+        showToast('全システムデータを初期化しました', 'success');
+      });
+    };
+
+    // タブ切り替え処理
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = item.getAttribute('data-target');
+        if (!targetId) return;
+
+        document.querySelectorAll('.nav-item').forEach(nav => {
+          nav.classList.remove('bg-kiyose', 'text-white', 'shadow-sm');
+          nav.classList.add('hover:bg-slate-800', 'hover:text-white');
+        });
+        item.classList.remove('hover:bg-slate-800');
+        item.classList.add('bg-kiyose', 'text-white', 'shadow-sm');
+
+        document.getElementById('current-tab-label').textContent = item.textContent.trim();
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById(targetId).classList.add('active');
+
+        if (window.innerWidth < 768) {
+          document.getElementById('sidebar').classList.add('-translate-x-full');
+          document.getElementById('sidebar-overlay').classList.add('hidden');
+        }
+
+        window.currentTabId = targetId;
+        sendHeartbeat();
+      });
+    });
+
+    const mobileBtn = document.getElementById('mobile-menu-btn');
+    if (mobileBtn) {
+      mobileBtn.addEventListener('click', () => {
+        document.getElementById('sidebar').classList.toggle('-translate-x-full');
+        document.getElementById('sidebar-overlay').classList.toggle('hidden');
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // 通話・グラフ・AIチャット機能
+    function createNewCallRoom() {
+      const rand = Math.random().toString(36).substring(2, 7);
+      const code = `kiyose-call-${rand}`;
+      const input = document.getElementById('call-room-code');
+      if (input) input.value = code;
+      showToast(`通話ルームを発行しました: ${code}`, 'success');
+    }
+
+    function copyRoomCode() {
+      const input = document.getElementById('call-room-code');
+      const val = input ? input.value.trim() : '';
+      if (!val) { showToast("コピーするコードがありません", "error"); return; }
+      navigator.clipboard.writeText(val);
+      showToast("通話部屋コードをコピーしました", "success");
+    }
+
+    function joinCallRoom() {
+      const input = document.getElementById('call-room-code');
+      let code = input ? input.value.trim() : '';
+      if (!code) { showToast("通話部屋コードを入力してください", "error"); return; }
+      const cleanRoom = code.replace(/[^a-zA-Z0-9-_]/g, '');
+      window.open(`https://meet.jit.si/${cleanRoom}`, 'KiyoseCallWindow', 'width=1000,height=700');
+    }
+
+    function initCharts() {
+      if (window.popChart) window.popChart.destroy();
+      if (window.budgChart) window.budgChart.destroy();
+
+      const ctxPop = document.getElementById('populationChart').getContext('2d');
+      window.popChart = new Chart(ctxPop, {
+        type: 'line',
+        data: {
+          labels: ['2020年', '2021年', '2022年', '2023年', '2024年', '2025年', '2026年(予測)'],
+          datasets: [{
+            label: '清瀬市 推計人口',
+            data: [75200, 75050, 74800, 74600, 74450, 74200, 74100],
+            borderColor: '#0284c7',
+            backgroundColor: 'rgba(2, 132, 199, 0.1)',
+            borderWidth: 3,
+            tension: 0.3,
+            fill: true
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      const ctxBudg = document.getElementById('budgetChart').getContext('2d');
+      window.budgChart = new Chart(ctxBudg, {
+        type: 'doughnut',
+        data: {
+          labels: ['農業・直売所支援 (35%)', '観光・環境推進 (20%)', 'インフラ・公共整備 (20%)', '子育て・コミュニティ (15%)', '起業補助 (10%)'],
+          datasets: [{
+            data: [35, 20, 20, 15, 10],
+            backgroundColor: ['#10b981', '#f59e0b', '#0284c7', '#ec4899', '#8b5cf6']
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    }
+
+    document.getElementById('chartSelector').addEventListener('change', (e) => {
+      const sel = e.target.value;
+      document.getElementById('populationChart').classList.toggle('hidden', sel !== 'population');
+      document.getElementById('budgetChart').classList.toggle('hidden', sel !== 'budget');
+    });
+
+    let aiHistory = [];
+    function initAIChat() {
+      aiHistory = [];
+      document.getElementById('ai-chat-history').innerHTML = '';
+      appendAIMessage('model', "こんにちは！**清瀬地域振興 AI アドバイザー** です。\n\n清瀬市の「ブランドにんじん」を活用した六次産業化、柳瀬川周辺の観光施策など何でもご相談ください。");
+    }
+
+    function clearAIChat() { initAIChat(); }
+
+    function appendAIMessage(role, text) {
+      const box = document.getElementById('ai-chat-history');
+      if (!box) return;
+      const isUser = role === 'user';
+      const formattedText = text.replace(/\n/g, '<br>');
+
+      box.innerHTML += `
+      <div class="flex gap-3 text-sm ${isUser ? 'flex-row-reverse' : ''}">
+        <div class="w-8 h-8 rounded-xl ${isUser ? 'bg-sky-600' : 'bg-purple-600'} text-white flex items-center justify-center flex-shrink-0 font-bold shadow-sm">
+          <i class="fa-solid ${isUser ? 'fa-user' : 'fa-robot'}"></i>
+        </div>
+        <div class="p-3.5 rounded-2xl shadow-sm max-w-[85%] leading-relaxed ${isUser ? 'bg-sky-600 text-white rounded-tr-none' : 'bg-white border border-slate-200/80 text-slate-800 rounded-tl-none'}">
+          ${formattedText}
+        </div>
+      </div>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    document.getElementById('ai-chat-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('ai-chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      input.value = '';
+      appendAIMessage('user', text);
+      setTimeout(() => {
+        appendAIMessage('model', `「${text}」についての施策案：\n1. 地元農家と連携したイベントの開催\n2. SNSを活用した観光スポットの発信強化\n3. 地域の特産品を使った限定メニューの開発`);
+      }, 600);
+    });
+  </script>
+</body>
+</html>
