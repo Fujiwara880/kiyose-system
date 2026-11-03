@@ -1,0 +1,16 @@
+{
+  "name": "kiyose-system",
+  "version": "1.2.0",
+  "description": "清瀬振興開発システム - Socket.io リアルタイム通信版",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
