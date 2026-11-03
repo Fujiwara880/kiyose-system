@@ -5,13 +5,10 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
 const PORT = process.env.PORT || 3000;
 
-// サーバー側パスワード保持
 const ADMIN_PASS = "E8NGF27R";
 const GUEST_PASS = "F-52E";
 
@@ -22,7 +19,6 @@ let blockedUids = new Set();
 
 app.use(express.static(path.join(__dirname)));
 
-// 5秒以上ハートビートがない非アクティブ接続を自動削除
 setInterval(() => {
   const now = Date.now();
   let updated = false;
@@ -32,9 +28,7 @@ setInterval(() => {
       updated = true;
     }
   }
-  if (updated) {
-    sendPresencesUpdate();
-  }
+  if (updated) sendPresencesUpdate();
 }, 3000);
 
 function sendPresencesUpdate() {
@@ -42,7 +36,6 @@ function sendPresencesUpdate() {
     ...p,
     isBlocked: blockedUids.has(p.uid)
   }));
-  
   io.emit('presences-update', {
     presences: presenceArray,
     blockedUids: Array.from(blockedUids)
@@ -50,45 +43,28 @@ function sendPresencesUpdate() {
 }
 
 io.on('connection', (socket) => {
-
-  // 1. サーバー側認証処理
   socket.on('authenticate', (data) => {
     if (blockedUids.has(data.uid)) {
       socket.emit('auth-result', { success: false, message: 'この端末は管理者によりブロックされています。' });
       return;
     }
-
     let role = null;
-    if (data.password === ADMIN_PASS) {
-      role = 'admin';
-    } else if (data.password === GUEST_PASS) {
-      role = 'guest';
-    } else {
+    if (data.password === ADMIN_PASS) role = 'admin';
+    else if (data.password === GUEST_PASS) role = 'guest';
+    else {
       socket.emit('auth-result', { success: false, message: 'パスワードが違います。' });
       return;
     }
-
-    socket.emit('auth-result', {
-      success: true,
-      role: role,
-      name: data.username,
-      uid: data.uid
-    });
-
-    socket.emit('init-data', {
-      board: boardPosts,
-      chat: chatMessages
-    });
+    socket.emit('auth-result', { success: true, role, name: data.username, uid: data.uid });
+    socket.emit('init-data', { board: boardPosts, chat: chatMessages });
   });
 
-  // 2. ハートビート
   socket.on('presence-heartbeat', (data) => {
     if (blockedUids.has(data.uid)) {
       socket.emit('blocked');
       socket.disconnect(true);
       return;
     }
-
     presences.set(socket.id, {
       socketId: socket.id,
       uid: data.uid,
@@ -100,21 +76,18 @@ io.on('connection', (socket) => {
       loginTime: data.loginTime,
       lastActive: Date.now()
     });
-
     sendPresencesUpdate();
   });
 
-  // 掲示板
   socket.on('add-board', (data) => {
     if (blockedUids.has(data.uid)) return;
-    const post = {
+    boardPosts.unshift({
       id: 'b_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       text: data.text,
       name: data.name,
       uid: data.uid,
       time: Date.now()
-    };
-    boardPosts.unshift(post);
+    });
     io.emit('board-update', boardPosts);
   });
 
@@ -128,17 +101,15 @@ io.on('connection', (socket) => {
     io.emit('board-update', boardPosts);
   });
 
-  // チャット
   socket.on('add-chat', (data) => {
     if (blockedUids.has(data.uid)) return;
-    const msg = {
+    chatMessages.push({
       id: 'c_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       text: data.text,
       name: data.name,
       uid: data.uid,
       time: Date.now()
-    };
-    chatMessages.push(msg);
+    });
     io.emit('chat-update', chatMessages);
   });
 
@@ -147,7 +118,6 @@ io.on('connection', (socket) => {
     io.emit('chat-update', chatMessages);
   });
 
-  // ブロック処理
   socket.on('block-user', (targetUid) => {
     blockedUids.add(targetUid);
     for (const [sId, p] of presences.entries()) {
@@ -161,13 +131,11 @@ io.on('connection', (socket) => {
     sendPresencesUpdate();
   });
 
-  // ブロック解除
   socket.on('unblock-user', (targetUid) => {
     blockedUids.delete(targetUid);
     sendPresencesUpdate();
   });
 
-  // 初期化
   socket.on('reset-all', () => {
     boardPosts = [];
     chatMessages = [];
@@ -175,7 +143,6 @@ io.on('connection', (socket) => {
     io.emit('chat-update', chatMessages);
   });
 
-  // 切断
   socket.on('disconnect', () => {
     presences.delete(socket.id);
     sendPresencesUpdate();
