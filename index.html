@@ -73,7 +73,6 @@
         <div>
           <label class="block text-sm font-semibold text-slate-700 mb-1">パスワード</label>
           <input type="password" id="login-password" required placeholder="パスワードを入力" class="w-full rounded-lg border-slate-300 border shadow-sm px-4 py-2.5 text-sm focus:border-kiyose focus:ring-2 focus:ring-kiyose/20 outline-none transition-all">
-          <p class="text-[11px] text-slate-400 mt-1">※ 管理者: <code class="bg-slate-100 px-1 py-0.5 rounded">E8NGF27R</code> / ゲスト: <code class="bg-slate-100 px-1 py-0.5 rounded">F-52E</code></p>
         </div>
         <button type="submit" id="login-btn" class="w-full bg-kiyose hover:bg-kiyose-dark text-white font-bold py-3 px-4 rounded-lg transition-all shadow-md shadow-sky-600/20 flex justify-center items-center gap-2 mt-2">
           <span>システムに接続する</span>
@@ -325,7 +324,7 @@
               </div>
               <div>
                 <h2 class="text-lg font-bold text-slate-800">開発者コントロールパネル</h2>
-                <p class="text-xs text-slate-500">Socket.io毎秒追跡による全端末環境・閲覧中画面のリアルタイム監視と即時ブロック</p>
+                <p class="text-xs text-slate-500">リアルタイム監視・ブロック制御・非アクティブ自動クリーンアップ</p>
               </div>
             </div>
             <button onclick="confirmResetAll()" class="bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm">
@@ -340,7 +339,7 @@
                   <th class="px-4 py-3">端末・環境情報</th>
                   <th class="px-4 py-3">閲覧中の画面</th>
                   <th class="px-4 py-3">接続状態</th>
-                  <th class="px-4 py-3 text-right">操作</th>
+                  <th class="px-4 py-3 text-right">操作 (ブロック / 解除)</th>
                 </tr>
               </thead>
               <tbody id="admin-presence-list">
@@ -355,8 +354,7 @@
   </main>
 
   <script>
-    // 1. Socket.io 接続設定
-    const socket = io(); // 同一サーバー（Render上）へ全自動接続
+    const socket = io();
 
     window.currentUserInfo = null;
     window.currentTabId = "tab-overview";
@@ -388,7 +386,6 @@
       return `${os} / ${browser} (${window.screen.width}x${window.screen.height})`;
     }
 
-    // トースト通知機能
     window.showToast = function(message, type = 'info') {
       const container = document.getElementById('toast-container');
       if (!container) return;
@@ -402,7 +399,6 @@
       setTimeout(() => { toast.classList.add('translate-x-full', 'opacity-0'); setTimeout(() => toast.remove(), 300); }, 4000);
     };
 
-    // モーダルダイアログ
     window.showConfirmModal = function(title, message, onConfirm) {
       const modal = document.getElementById('custom-modal');
       document.getElementById('modal-title').textContent = title;
@@ -425,53 +421,57 @@
       };
     };
 
-    // 2. ログイン処理
+    // 2. ログインリクエスト
     document.getElementById('login-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const uname = document.getElementById('login-username').value.trim();
       const pass = document.getElementById('login-password').value.trim();
 
-      let role = "guest";
-      if (pass === "E8NGF27R") {
-        role = "admin";
-        document.getElementById('nav-admin').classList.remove('hidden');
-        document.getElementById('nav-admin').classList.add('flex');
-      } else if (pass === "F-52E") {
-        role = "guest";
-      } else {
-        showToast("パスワードが正しくありません", "error");
-        return;
-      }
-
-      // クライアント固有UIDの取得・生成
       let uid = localStorage.getItem('kiyose_uid');
       if (!uid) {
         uid = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
         localStorage.setItem('kiyose_uid', uid);
       }
 
-      window.currentUserInfo = {
+      socket.emit('authenticate', {
+        username: uname,
+        password: pass,
         uid: uid,
-        name: uname,
-        role: role,
+        device: detectDeviceInfo()
+      });
+    });
+
+    socket.on('auth-result', (res) => {
+      if (!res.success) {
+        showToast(res.message, "error");
+        return;
+      }
+
+      window.currentUserInfo = {
+        uid: res.uid,
+        name: res.name,
+        role: res.role,
         device: detectDeviceInfo(),
         loginTime: Date.now()
       };
 
+      if (res.role === 'admin') {
+        document.getElementById('nav-admin').classList.remove('hidden');
+        document.getElementById('nav-admin').classList.add('flex');
+      }
+
       document.getElementById('user-display').textContent = window.currentUserInfo.name;
-      document.getElementById('user-id-display').textContent = `ID: ${uid.substring(0, 10)}`;
+      document.getElementById('user-id-display').textContent = `ID: ${res.uid.substring(0, 10)}`;
       document.getElementById('login-overlay').classList.add('hidden');
 
-      // ハートビート機能開始（毎秒送信）
       sendHeartbeat();
       setInterval(sendHeartbeat, 1000);
 
       initCharts();
       initAIChat();
-      showToast(`${window.currentUserInfo.name}さん、Socket.ioに接続しました`, 'success');
+      showToast(`${window.currentUserInfo.name}さん、ログインしました`, 'success');
     });
 
-    // 毎秒ハートビート送信
     function sendHeartbeat() {
       if (!window.currentUserInfo || !socket.connected) return;
       socket.emit('presence-heartbeat', {
@@ -481,7 +481,6 @@
       });
     }
 
-    // 3. Socket.io 受信イベント
     socket.on('init-data', (data) => {
       renderBoard(data.board);
       renderChat(data.chat);
@@ -489,13 +488,14 @@
 
     socket.on('board-update', (posts) => renderBoard(posts));
     socket.on('chat-update', (msgs) => renderChat(msgs));
-    socket.on('presences-update', (list) => renderAdminPresence(list));
+    
+    // プレゼンス一覧およびブロック中情報を受信
+    socket.on('presences-update', (data) => renderAdminPresence(data));
 
     socket.on('blocked', () => {
       document.getElementById('blocked-overlay').classList.remove('hidden');
     });
 
-    // 掲示板処理
     function renderBoard(posts) {
       const list = document.getElementById('board-list');
       if (!list) return;
@@ -550,7 +550,6 @@
       });
     };
 
-    // チャット処理
     function renderChat(msgs) {
       const box = document.getElementById('team-chat-messages');
       if (!box) return;
@@ -598,28 +597,40 @@
       });
     };
 
-    // 開発者コントロールパネル
-    function renderAdminPresence(list) {
+    // 開発者画面（ブロック解除対応＆古くなったデバイス情報の自動削除反映）
+    function renderAdminPresence(data) {
       const tbody = document.getElementById('admin-presence-list');
       if (!tbody) return;
       tbody.innerHTML = '';
 
-      if (!list || list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-6 text-center text-slate-400">接続端末はありません</td></tr>';
+      const presencesList = data.presences || [];
+      const blockedList = data.blockedUids || [];
+
+      if (presencesList.length === 0 && blockedList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-6 text-center text-slate-400">アクティブな接続端末はありません</td></tr>';
         return;
       }
 
       const now = Date.now();
-      list.sort((a,b) => (b.lastActive || 0) - (a.lastActive || 0)).forEach(p => {
+      const isAdmin = window.currentUserInfo && window.currentUserInfo.role === 'admin';
+
+      // アクティブ・オンライン端末の表示
+      presencesList.sort((a,b) => (b.lastActive || 0) - (a.lastActive || 0)).forEach(p => {
         const isOnline = (now - (p.lastActive || 0)) < 3000;
         const statusBadge = isOnline 
           ? `<span class="bg-emerald-100 text-emerald-700 border border-emerald-300 px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> オンライン</span>`
-          : `<span class="bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full text-xs font-medium">オフライン</span>`;
+          : `<span class="bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full text-xs font-medium">切断中</span>`;
 
         const isMe = window.currentUserInfo && p.uid === window.currentUserInfo.uid;
-        const blockBtn = (!isMe && window.currentUserInfo && window.currentUserInfo.role === 'admin') 
-          ? `<button onclick="blockUser('${p.uid}')" class="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-ban mr-1"></i>即時ブロック</button>` 
-          : `<span class="text-xs text-slate-400">-</span>`;
+        
+        let actionBtn = `<span class="text-xs text-slate-400">-</span>`;
+        if (isAdmin && !isMe) {
+          if (p.isBlocked) {
+            actionBtn = `<button onclick="unblockUser('${p.uid}')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-unlock mr-1"></i>ブロック解除</button>`;
+          } else {
+            actionBtn = `<button onclick="blockUser('${p.uid}')" class="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-ban mr-1"></i>即時ブロック</button>`;
+          }
+        }
 
         tbody.innerHTML += `
         <tr class="border-b border-slate-200/60 hover:bg-slate-100/50 transition-colors">
@@ -636,8 +647,30 @@
             </span>
           </td>
           <td class="px-4 py-3">${statusBadge}</td>
-          <td class="px-4 py-3 text-right">${blockBtn}</td>
+          <td class="px-4 py-3 text-right">${actionBtn}</td>
         </tr>`;
+      });
+
+      // オフラインだがブロック状態になっているUIDの解除用表示
+      blockedList.forEach(bUid => {
+        const alreadyShown = presencesList.some(p => p.uid === bUid);
+        if (!alreadyShown) {
+          const actionBtn = isAdmin 
+            ? `<button onclick="unblockUser('${bUid}')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-unlock mr-1"></i>ブロック解除</button>`
+            : `<span class="text-xs text-slate-400">-</span>`;
+
+          tbody.innerHTML += `
+          <tr class="border-b border-slate-200/60 bg-red-50/40">
+            <td class="px-4 py-3">
+              <div class="font-bold text-red-700">ブロック中ユーザー</div>
+              <div class="text-[10px] text-red-400">ID: ${bUid.substring(0,8)}</div>
+            </td>
+            <td class="px-4 py-3 text-xs text-slate-400 font-mono">-</td>
+            <td class="px-4 py-3 text-xs text-slate-400">-</td>
+            <td class="px-4 py-3"><span class="bg-red-100 text-red-700 border border-red-300 px-2.5 py-0.5 rounded-full text-xs font-bold">アクセス遮断中</span></td>
+            <td class="px-4 py-3 text-right">${actionBtn}</td>
+          </tr>`;
+        }
       });
     }
 
@@ -648,6 +681,13 @@
       });
     };
 
+    window.unblockUser = function(uid) {
+      showConfirmModal("ブロック解除", "このユーザーのブロックを解除しますか？", () => {
+        socket.emit('unblock-user', uid);
+        showToast('対象ユーザーのブロックを解除しました', 'success');
+      });
+    };
+
     window.confirmResetAll = function() {
       showConfirmModal("システムデータ初期化", "掲示板・チャットを一括初期化しますか？", () => {
         socket.emit('reset-all');
@@ -655,7 +695,6 @@
       });
     };
 
-    // タブ切り替え処理
     document.querySelectorAll('.nav-item').forEach(item => {
       item.addEventListener('click', (e) => {
         e.preventDefault();
@@ -696,7 +735,6 @@
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    // 通話・グラフ・AIチャット機能
     function createNewCallRoom() {
       const rand = Math.random().toString(36).substring(2, 7);
       const code = `kiyose-call-${rand}`;

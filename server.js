@@ -11,22 +11,78 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
-// サーバー側メモリデータ（全端末間で一括共有）
+// サーバー側パスワード保持
+const ADMIN_PASS = "E8NGF27R";
+const GUEST_PASS = "F-52E";
+
 let boardPosts = [];
 let chatMessages = [];
-let presences = new Map(); // socket.id -> presence
-let blockedUids = new Set(); // ブロックされたユーザーID
+let presences = new Map(); // socket.id -> presence info
+let blockedUids = new Set(); // ブロックされたユーザーIDのリスト
 
 app.use(express.static(path.join(__dirname)));
 
+// 5秒以上ハートビートがない非アクティブ接続を自動削除（古くなった端末情報のクリーンアップ）
+setInterval(() => {
+  const now = Date.now();
+  let updated = false;
+  for (const [sId, p] of presences.entries()) {
+    if (now - p.lastActive > 5000) {
+      presences.delete(sId);
+      updated = true;
+    }
+  }
+  if (updated) {
+    sendPresencesUpdate();
+  }
+}, 3000);
+
+function sendPresencesUpdate() {
+  const presenceArray = Array.from(presences.values()).map(p => ({
+    ...p,
+    isBlocked: blockedUids.has(p.uid)
+  }));
+  
+  // ブロック中だが非アクティブなUIDも管理者画面で確認・解除できるように含める
+  io.emit('presences-update', {
+    presences: presenceArray,
+    blockedUids: Array.from(blockedUids)
+  });
+}
+
 io.on('connection', (socket) => {
-  // 接続時に現在の最新データを送信
-  socket.emit('init-data', {
-    board: boardPosts,
-    chat: chatMessages
+
+  // 1. サーバー側での安全な認証処理
+  socket.on('authenticate', (data) => {
+    if (blockedUids.has(data.uid)) {
+      socket.emit('auth-result', { success: false, message: 'この端末は管理者によりブロックされています。' });
+      return;
+    }
+
+    let role = null;
+    if (data.password === ADMIN_PASS) {
+      role = 'admin';
+    } else if (data.password === GUEST_PASS) {
+      role = 'guest';
+    } else {
+      socket.emit('auth-result', { success: false, message: 'パスワードが違います。' });
+      return;
+    }
+
+    socket.emit('auth-result', {
+      success: true,
+      role: role,
+      name: data.username,
+      uid: data.uid
+    });
+
+    socket.emit('init-data', {
+      board: boardPosts,
+      chat: chatMessages
+    });
   });
 
-  // 毎秒ハートビート（全端末の情報追跡）
+  // 2. 毎秒ハートビート受信とアクティブ更新
   socket.on('presence-heartbeat', (data) => {
     if (blockedUids.has(data.uid)) {
       socket.emit('blocked');
@@ -46,11 +102,10 @@ io.on('connection', (socket) => {
       lastActive: Date.now()
     });
 
-    // 管理画面および全端末へ接続状況を自動一斉配信
-    io.emit('presences-update', Array.from(presences.values()));
+    sendPresencesUpdate();
   });
 
-  // 掲示板投稿
+  // 掲示板機能
   socket.on('add-board', (data) => {
     if (blockedUids.has(data.uid)) return;
     const post = {
@@ -64,19 +119,17 @@ io.on('connection', (socket) => {
     io.emit('board-update', boardPosts);
   });
 
-  // 掲示板削除
   socket.on('delete-board', (id) => {
     boardPosts = boardPosts.filter(p => p.id !== id);
     io.emit('board-update', boardPosts);
   });
 
-  // 掲示板全消去
   socket.on('clear-board', () => {
     boardPosts = [];
     io.emit('board-update', boardPosts);
   });
 
-  // チャットメッセージ
+  // チャット機能
   socket.on('add-chat', (data) => {
     if (blockedUids.has(data.uid)) return;
     const msg = {
@@ -90,13 +143,12 @@ io.on('connection', (socket) => {
     io.emit('chat-update', chatMessages);
   });
 
-  // チャット履歴消去
   socket.on('clear-chat', () => {
     chatMessages = [];
     io.emit('chat-update', chatMessages);
   });
 
-  // 管理者による「即時ブロック」処理
+  // 3. 管理者操作：即時ブロック処理
   socket.on('block-user', (targetUid) => {
     blockedUids.add(targetUid);
     for (const [sId, p] of presences.entries()) {
@@ -107,7 +159,13 @@ io.on('connection', (socket) => {
         presences.delete(sId);
       }
     }
-    io.emit('presences-update', Array.from(presences.values()));
+    sendPresencesUpdate();
+  });
+
+  // 4. 管理者操作：ブロック解除処理（追加）
+  socket.on('unblock-user', (targetUid) => {
+    blockedUids.delete(targetUid);
+    sendPresencesUpdate();
   });
 
   // 全データ初期化
@@ -118,10 +176,10 @@ io.on('connection', (socket) => {
     io.emit('chat-update', chatMessages);
   });
 
-  // 切断時のプレゼンス除去
+  // 切断処理
   socket.on('disconnect', () => {
     presences.delete(socket.id);
-    io.emit('presences-update', Array.from(presences.values()));
+    sendPresencesUpdate();
   });
 });
 
