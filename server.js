@@ -17,12 +17,12 @@ const GUEST_PASS = "F-52E";
 
 let boardPosts = [];
 let chatMessages = [];
-let presences = new Map(); // socket.id -> presence info
-let blockedUids = new Set(); // ブロックされたユーザーIDのリスト
+let presences = new Map();
+let blockedUids = new Set();
 
 app.use(express.static(path.join(__dirname)));
 
-// 5秒以上ハートビートがない非アクティブ接続を自動削除（古くなった端末情報のクリーンアップ）
+// 5秒以上ハートビートがない非アクティブ接続を自動削除
 setInterval(() => {
   const now = Date.now();
   let updated = false;
@@ -43,7 +43,6 @@ function sendPresencesUpdate() {
     isBlocked: blockedUids.has(p.uid)
   }));
   
-  // ブロック中だが非アクティブなUIDも管理者画面で確認・解除できるように含める
   io.emit('presences-update', {
     presences: presenceArray,
     blockedUids: Array.from(blockedUids)
@@ -52,7 +51,7 @@ function sendPresencesUpdate() {
 
 io.on('connection', (socket) => {
 
-  // 1. サーバー側での安全な認証処理
+  // 1. サーバー側認証処理
   socket.on('authenticate', (data) => {
     if (blockedUids.has(data.uid)) {
       socket.emit('auth-result', { success: false, message: 'この端末は管理者によりブロックされています。' });
@@ -82,7 +81,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 2. 毎秒ハートビート受信とアクティブ更新
+  // 2. ハートビート
   socket.on('presence-heartbeat', (data) => {
     if (blockedUids.has(data.uid)) {
       socket.emit('blocked');
@@ -105,7 +104,7 @@ io.on('connection', (socket) => {
     sendPresencesUpdate();
   });
 
-  // 掲示板機能
+  // 掲示板
   socket.on('add-board', (data) => {
     if (blockedUids.has(data.uid)) return;
     const post = {
@@ -129,7 +128,7 @@ io.on('connection', (socket) => {
     io.emit('board-update', boardPosts);
   });
 
-  // チャット機能
+  // チャット
   socket.on('add-chat', (data) => {
     if (blockedUids.has(data.uid)) return;
     const msg = {
@@ -148,7 +147,7 @@ io.on('connection', (socket) => {
     io.emit('chat-update', chatMessages);
   });
 
-  // 3. 管理者操作：即時ブロック処理
+  // ブロック処理
   socket.on('block-user', (targetUid) => {
     blockedUids.add(targetUid);
     for (const [sId, p] of presences.entries()) {
@@ -162,13 +161,13 @@ io.on('connection', (socket) => {
     sendPresencesUpdate();
   });
 
-  // 4. 管理者操作：ブロック解除処理（追加）
+  // ブロック解除
   socket.on('unblock-user', (targetUid) => {
     blockedUids.delete(targetUid);
     sendPresencesUpdate();
   });
 
-  // 全データ初期化
+  // 初期化
   socket.on('reset-all', () => {
     boardPosts = [];
     chatMessages = [];
@@ -176,7 +175,7 @@ io.on('connection', (socket) => {
     io.emit('chat-update', chatMessages);
   });
 
-  // 切断処理
+  // 切断
   socket.on('disconnect', () => {
     presences.delete(socket.id);
     sendPresencesUpdate();

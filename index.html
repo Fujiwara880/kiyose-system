@@ -120,7 +120,7 @@
           <i class="fa-solid fa-phone-volume w-6 text-center mr-2"></i> 無料オンライン通話
         </a>
         <a href="#" data-target="tab-ai" class="nav-item flex items-center px-4 py-3 hover:bg-slate-800 hover:text-white rounded-xl font-medium transition-colors">
-          <i class="fa-solid fa-robot w-6 text-center mr-2 text-purple-400"></i> 清瀬復興 AIアシスタント
+          <i class="fa-solid fa-book-bookmark w-6 text-center mr-2 text-amber-400"></i> 清瀬市 総合百科辞書
         </a>
         <a href="#" data-target="tab-map" class="nav-item flex items-center px-4 py-3 hover:bg-slate-800 hover:text-white rounded-xl font-medium transition-colors">
           <i class="fa-solid fa-map-location-dot w-6 text-center mr-2"></i> 地域マップ
@@ -271,34 +271,46 @@
         </div>
       </div>
 
-      <!-- タブ: AI Assistant -->
-      <div id="tab-ai" class="tab-content flex-col h-full max-w-4xl mx-auto w-full">
+      <!-- タブ: 清瀬市 総合百科辞書 (旧AI Assistant) -->
+      <div id="tab-ai" class="tab-content flex-col h-full max-w-5xl mx-auto w-full">
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 flex flex-col h-full overflow-hidden">
-          <div class="bg-slate-50 border-b border-slate-200/80 p-4 flex justify-between items-center">
-            <div class="flex items-center gap-3">
-              <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                <i class="fa-solid fa-robot"></i>
+          
+          <!-- ヘッダー＆検索バー -->
+          <div class="bg-slate-900 text-white p-5 border-b border-slate-800">
+            <div class="flex items-center justify-between gap-4 mb-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold text-xl shadow">
+                  <i class="fa-solid fa-book-bookmark"></i>
+                </div>
+                <div>
+                  <h2 class="text-lg font-bold">東京都清瀬市 総合百科辞書・データベース</h2>
+                  <p class="text-xs text-slate-400">清瀬市の歴史・地理・特産品・観光・医療・施設情報を即座に検索</p>
+                </div>
               </div>
-              <div>
-                <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
-                  清瀬地域振興 AI アドバイザー
-                  <span class="text-[10px] bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full border border-purple-200 font-bold">Gemini Powered</span>
-                </h2>
-                <p class="text-xs text-slate-500">清瀬市の農業・自然観光・コミュニティ活性化施策について相談</p>
+              <span id="dict-count-badge" class="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs px-3 py-1 rounded-full font-semibold">全8項目</span>
+            </div>
+            
+            <!-- 検索フォーム ＆ カテゴリフィルター -->
+            <div class="flex flex-col sm:flex-row gap-2 mt-2">
+              <div class="relative flex-1">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
+                <input type="text" id="dict-search-input" placeholder="キーワード検索（例: にんじん, 柳瀬川, 病院, ひまわり...）" class="w-full pl-10 pr-4 py-2 bg-slate-800 text-white placeholder-slate-400 text-sm rounded-xl border border-slate-700 focus:border-amber-500 outline-none">
+              </div>
+              <div class="flex gap-1 overflow-x-auto custom-scrollbar py-0.5" id="dict-category-buttons">
+                <button onclick="filterDictCategory('all')" class="dict-cat-btn active px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-amber-500 text-slate-950 transition-colors">すべて</button>
+                <button onclick="filterDictCategory('特産品')" class="dict-cat-btn px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">特産品</button>
+                <button onclick="filterDictCategory('自然・観光')" class="dict-cat-btn px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">自然・観光</button>
+                <button onclick="filterDictCategory('歴史・文化')" class="dict-cat-btn px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">歴史・文化</button>
+                <button onclick="filterDictCategory('医療・施設')" class="dict-cat-btn px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">医療・施設</button>
               </div>
             </div>
-            <button onclick="clearAIChat()" class="text-xs text-slate-500 hover:text-red-500 px-3 py-1.5 border border-slate-200 rounded-lg bg-white transition-colors">
-              <i class="fa-solid fa-trash-can mr-1"></i>クリア
-            </button>
           </div>
-          <div id="ai-chat-history" class="flex-1 overflow-y-auto custom-scrollbar p-4 bg-slate-50 flex flex-col gap-4"></div>
-          <form id="ai-chat-form" class="p-3 bg-white border-t border-slate-200/80 flex gap-2 relative">
-            <textarea id="ai-chat-input" rows="2" placeholder="清瀬市の特産品を活用したアイデアなどについて質問してください..." class="flex-1 rounded-xl border-slate-300 border px-3 py-2 text-sm resize-none custom-scrollbar outline-none focus:border-purple-500" required></textarea>
-            <button type="submit" id="ai-chat-submit-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center justify-center gap-2 min-w-[5.5rem]">
-              <span id="ai-chat-btn-text"><i class="fa-solid fa-paper-plane"></i> 送信</span>
-              <div id="ai-chat-loader" class="loader hidden !w-4 !h-4 !border-2 !border-purple-200 !border-t-white"></div>
-            </button>
-          </form>
+
+          <!-- 辞書カード一覧コンテナ -->
+          <div id="dict-cards-container" class="flex-1 overflow-y-auto p-5 bg-slate-50 grid grid-cols-1 md:grid-cols-2 gap-4 custom-scrollbar">
+            <!-- JavaScriptにより自動生成されます -->
+          </div>
+
         </div>
       </div>
 
@@ -364,10 +376,86 @@
       'tab-board': 'チーム掲示板',
       'tab-chat': 'チームチャット',
       'tab-call': '無料オンライン通話',
-      'tab-ai': '清瀬復興 AIアシスタント',
+      'tab-ai': '清瀬市 総合百科辞書',
       'tab-map': '地域マップ',
       'tab-admin': '開発者（管理）'
     };
+
+    // 清瀬市データベース情報
+    const KIYOSE_DICTIONARY = [
+      {
+        id: "carrot",
+        title: "清瀬のベータキャロット（清瀬にんじん）",
+        category: "特産品",
+        icon: "fa-carrot",
+        color: "text-orange-500 bg-orange-50 border-orange-200",
+        summary: "東京都内トップクラスの生産量を誇る清瀬市の特産ブランド野菜。",
+        detail: "清瀬市は東京都内有数の農業地帯であり、特に「にんじん」の栽培が非常に盛んです。水はけが良く栄養豊かな関東ローム層の土壌を生かし、甘みが強く栄養価の高いベータキャロットや季節ごとの品種が年間を通じて出荷されています。地元の直売所や小学校の給食、加工品（にんじん焼酎やジャム）としても親しまれています。"
+      },
+      {
+        id: "sunflower",
+        title: "清瀬ひまわりフェスティバル",
+        category: "自然・観光",
+        icon: "fa-sun",
+        color: "text-amber-500 bg-amber-50 border-amber-200",
+        summary: "約24,000平方メートルの広大な農地に約10万本のひまわりが咲き誇る夏の大イベント。",
+        detail: "毎年8月中旬から下旬にかけて、下清戸地区の農地で広大なひまわり畑が一般公開されます。元々は農地景観の維持と緑肥を目的として始められましたが、一面に広がる大輪のひまわりが圧巻の光景を創り出し、都内外から数万人の観光客が訪れる市内最大級の観光スポットとなっています。"
+      },
+      {
+        id: "yanase-river",
+        title: "柳瀬川・清瀬金山緑地公園",
+        category: "自然・観光",
+        icon: "fa-water",
+        color: "text-emerald-500 bg-emerald-50 border-emerald-200",
+        summary: "市北部を流れる一級河川と、武蔵野の豊かな自然を再現した水辺公園。",
+        detail: "柳瀬川は武蔵野の面影を残す美しい河川で、四季折々の野鳥や水生生物が生息しています。金山緑地公園は水生植物池や滝、木道が整備されており、春のバーベキューや川遊び、秋の紅葉など、市民の憩いの場となっています。"
+      },
+      {
+        id: "medical-city",
+        title: "医療・結核療養の歴史と医療都市",
+        category: "医療・施設",
+        icon: "fa-hospital",
+        color: "text-blue-500 bg-blue-50 border-blue-200",
+        summary: "国立病院機構東京病院や結核予防会複十字病院が集積する国内有数の医療拠点。",
+        detail: "昭和初期、緑豊かで空気のきれいな清瀬は結核療養の地として選ばれ、多くの療養所が建設されました。現在では高度な呼吸器疾患治療や予防医学、看護教育機関が集中する日本屈指の「医療・福祉の街」として発展を遂げています。"
+      },
+      {
+        id: "museum",
+        title: "清瀬市郷土博物館",
+        category: "歴史・文化",
+        icon: "fa-landmark",
+        color: "text-purple-500 bg-purple-50 border-purple-200",
+        summary: "清瀬の歴史・民俗・自然・結核療養の歴史を学べる総合博物館。",
+        detail: "上清戸に位置する市立博物館で、武蔵野の農村生活や伝統行事、結核療養の歴史に関する貴重な資料が展示されています。体験学習室や映像展示も充実しており、地域の歴史教育の拠点として親しまれています。"
+      },
+      {
+        id: "station",
+        title: "西武池袋線 清瀬駅",
+        category: "医療・施設",
+        icon: "fa-train",
+        color: "text-sky-500 bg-sky-50 border-sky-200",
+        summary: "都心（池袋・有楽町・副都心線方面）へのアクセスに優れた清瀬市の中心駅。",
+        detail: "1924年（大正13年）に開業した歴史ある駅で、北口・南口ともにバスロータリーや商店街（南口ふれあい通り商店街など）が広がります。駅周辺の再開発も進み、商業施設と住宅街が調和した生活利便性の高いエリアです。"
+      },
+      {
+        id: "history",
+        title: "清瀬市の歴史と市制施行",
+        category: "歴史・文化",
+        icon: "fa-scroll",
+        color: "text-yellow-600 bg-yellow-50 border-yellow-200",
+        summary: "1970年（昭和45年）に市制施行。武蔵野の農村から緑豊かな住宅都市へ発展。",
+        detail: "古くは武蔵国多摩郡に属し、江戸時代には川越街道の裏街道や農業集落として発展しました。1889年の町村制施行で「清瀬村」が発足（上清戸・中清戸・下清戸・清戸下宿・野塩・中里の6村が合併）。1954年に町制、1970年に「清瀬市」となりました。"
+      },
+      {
+        id: "agriculture",
+        title: "清瀬の農業と直売所カルチャー",
+        category: "特産品",
+        icon: "fa-seedling",
+        color: "text-lime-600 bg-lime-50 border-lime-200",
+        summary: "採れたて新鮮な野菜が手に入るコインロッカー型・路地裏直売所の宝庫。",
+        detail: "清瀬市内には農家直営の野菜直売所が100箇所以上点在しています。にんじんをはじめ、ほうれん草、キャベツ、トウモロコシ、枝豆など、朝採れの新鮮な野菜が安価で手に入るため、市民や近隣住民に大人気です。"
+      }
+    ];
 
     function detectDeviceInfo() {
       const ua = navigator.userAgent;
@@ -468,7 +556,7 @@
       setInterval(sendHeartbeat, 1000);
 
       initCharts();
-      initAIChat();
+      initDictionary();
       showToast(`${window.currentUserInfo.name}さん、ログインしました`, 'success');
     });
 
@@ -488,8 +576,6 @@
 
     socket.on('board-update', (posts) => renderBoard(posts));
     socket.on('chat-update', (msgs) => renderChat(msgs));
-    
-    // プレゼンス一覧およびブロック中情報を受信
     socket.on('presences-update', (data) => renderAdminPresence(data));
 
     socket.on('blocked', () => {
@@ -597,7 +683,67 @@
       });
     };
 
-    // 開発者画面（ブロック解除対応＆古くなったデバイス情報の自動削除反映）
+    // 辞書機能の制御
+    let currentDictCat = 'all';
+    function initDictionary() {
+      renderDictionary();
+      
+      const searchInput = document.getElementById('dict-search-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', () => renderDictionary());
+      }
+    }
+
+    window.filterDictCategory = function(cat) {
+      currentDictCat = cat;
+      document.querySelectorAll('.dict-cat-btn').forEach(btn => {
+        btn.classList.remove('bg-amber-500', 'text-slate-950');
+        btn.classList.add('bg-slate-800', 'text-slate-300');
+      });
+      event.target.classList.remove('bg-slate-800', 'text-slate-300');
+      event.target.classList.add('bg-amber-500', 'text-slate-950');
+      renderDictionary();
+    };
+
+    function renderDictionary() {
+      const container = document.getElementById('dict-cards-container');
+      const searchInput = document.getElementById('dict-search-input');
+      const badge = document.getElementById('dict-count-badge');
+      if (!container) return;
+
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      
+      const filtered = KIYOSE_DICTIONARY.filter(item => {
+        const matchCat = (currentDictCat === 'all' || item.category === currentDictCat);
+        const matchQuery = !query || item.title.toLowerCase().includes(query) || item.summary.toLowerCase().includes(query) || item.detail.toLowerCase().includes(query) || item.category.toLowerCase().includes(query);
+        return matchCat && matchQuery;
+      });
+
+      if (badge) badge.textContent = `表示中: ${filtered.length}件 / 全${KIYOSE_DICTIONARY.length}件`;
+
+      container.innerHTML = '';
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="col-span-2 text-center text-slate-400 py-16 text-sm">該当する情報が見つかりませんでした</div>';
+        return;
+      }
+
+      filtered.forEach(item => {
+        container.innerHTML += `
+        <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-bold px-2.5 py-1 rounded-lg ${item.color} flex items-center gap-1.5">
+                <i class="fa-solid ${item.icon}"></i> ${item.category}
+              </span>
+            </div>
+            <h3 class="text-base font-bold text-slate-800 mb-2">${escapeHtml(item.title)}</h3>
+            <p class="text-xs text-slate-500 font-medium mb-3">${escapeHtml(item.summary)}</p>
+            <p class="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">${escapeHtml(item.detail)}</p>
+          </div>
+        </div>`;
+      });
+    }
+
     function renderAdminPresence(data) {
       const tbody = document.getElementById('admin-presence-list');
       if (!tbody) return;
@@ -614,7 +760,6 @@
       const now = Date.now();
       const isAdmin = window.currentUserInfo && window.currentUserInfo.role === 'admin';
 
-      // アクティブ・オンライン端末の表示
       presencesList.sort((a,b) => (b.lastActive || 0) - (a.lastActive || 0)).forEach(p => {
         const isOnline = (now - (p.lastActive || 0)) < 3000;
         const statusBadge = isOnline 
@@ -651,7 +796,6 @@
         </tr>`;
       });
 
-      // オフラインだがブロック状態になっているUIDの解除用表示
       blockedList.forEach(bUid => {
         const alreadyShown = presencesList.some(p => p.uid === bUid);
         if (!alreadyShown) {
@@ -799,46 +943,6 @@
       const sel = e.target.value;
       document.getElementById('populationChart').classList.toggle('hidden', sel !== 'population');
       document.getElementById('budgetChart').classList.toggle('hidden', sel !== 'budget');
-    });
-
-    let aiHistory = [];
-    function initAIChat() {
-      aiHistory = [];
-      document.getElementById('ai-chat-history').innerHTML = '';
-      appendAIMessage('model', "こんにちは！**清瀬地域振興 AI アドバイザー** です。\n\n清瀬市の「ブランドにんじん」を活用した六次産業化、柳瀬川周辺の観光施策など何でもご相談ください。");
-    }
-
-    function clearAIChat() { initAIChat(); }
-
-    function appendAIMessage(role, text) {
-      const box = document.getElementById('ai-chat-history');
-      if (!box) return;
-      const isUser = role === 'user';
-      const formattedText = text.replace(/\n/g, '<br>');
-
-      box.innerHTML += `
-      <div class="flex gap-3 text-sm ${isUser ? 'flex-row-reverse' : ''}">
-        <div class="w-8 h-8 rounded-xl ${isUser ? 'bg-sky-600' : 'bg-purple-600'} text-white flex items-center justify-center flex-shrink-0 font-bold shadow-sm">
-          <i class="fa-solid ${isUser ? 'fa-user' : 'fa-robot'}"></i>
-        </div>
-        <div class="p-3.5 rounded-2xl shadow-sm max-w-[85%] leading-relaxed ${isUser ? 'bg-sky-600 text-white rounded-tr-none' : 'bg-white border border-slate-200/80 text-slate-800 rounded-tl-none'}">
-          ${formattedText}
-        </div>
-      </div>`;
-      box.scrollTop = box.scrollHeight;
-    }
-
-    document.getElementById('ai-chat-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const input = document.getElementById('ai-chat-input');
-      const text = input.value.trim();
-      if (!text) return;
-
-      input.value = '';
-      appendAIMessage('user', text);
-      setTimeout(() => {
-        appendAIMessage('model', `「${text}」についての施策案：\n1. 地元農家と連携したイベントの開催\n2. SNSを活用した観光スポットの発信強化\n3. 地域の特産品を使った限定メニューの開発`);
-      }, 600);
     });
   </script>
 </body>
